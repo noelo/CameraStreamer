@@ -15,52 +15,62 @@ class ImageStreamer(object):
     '''
 
 
-    def __init__(self):
-        self.imgCount = 0
-        self.payloadResult = ''
-        self.startHDR = None
-        self.endHDR = None
-        self.startHDRFound = False
-        self.endHDRFound = False
-
-
-
-    def retrieveImage(self):
-        r = requests.get("http://192.168.1.170/videostream.cgi?rate=0&user=admin&pwd=yearight", stream=True)
-        for data in r.iter_content(1000):
-        #     print "loading data"
-            self.payloadResult += data
+    def __init__(self,streamURL=None,snapshotURL=None):
+        self.streamURL = None
+        self.snapshotURL = None
         
-            if not self.startHDRFound:
-                startHDR = self.payloadResult.find("\377\330")
+        
+    def configCamera(self):
+        # Turn on outdoor mode
+        x = requests.get('http://192.168.1.170/camera_control.cgi?param=3&value=2&user=admin&pwd=password')  
+        if x.status_code != 200: raise Exception('Unable to turn on outdoor mode, status = ' + x.status_code)
+        
+        # Turn on infrared mode   
+        x =  x = requests.get('http://192.168.1.170/set_misc.cgi?led_mode=2&user=admin&pwd=password')
+        if x.status_code != 200: raise Exception('Unable to turn on infrared mode, status = ' + x.status_code)
+        
+
+
+    def retrieveImageStream(self):
+        payloadResult = ''
+        startHDR = None
+        endHDR = None
+        startHDRFound = False
+        endHDRFound = False
+        
+        r = requests.get(self.streamURL, stream=True)
+        for data in r.iter_content(1000):
+
+            payloadResult += data
+        
+            if not startHDRFound:
+                startHDR = payloadResult.find("\377\330")
             else:
                 pass
                 
             if startHDR != -1:
                 startHDRFound = True
-        #         print "Start Header found @ %d" % startHDR
         
-                if not self.endHDRFound:
-                    endHDR = self.payloadResult.find("\377\331")
+                if not endHDRFound:
+                    endHDR = payloadResult.find("\377\331")
                 else:
                     pass
                     
                 if endHDR != -1:
                     endHDRFound = True
-        #             print "End Header found @ %d out of %d" % (endHDR, len(payloadResult))
                     
-                    imgPayload = self.payloadResult[startHDR:endHDR]
+                    imgPayload = payloadResult[startHDR:endHDR]
                          
         
-                    resImage = Image.open(StringIO(imgPayload))
+#                     resImage = Image.open(StringIO(imgPayload))
+
                     
-                    yield resImage
-        #             f = open(str((imgCount%10)+1) + 'workfile.jpg', 'wb')
-        #             f.write(imgPayload)
-        #             f.close
+                    yield StringIO(imgPayload)
+#                     f = open(str((imgCount%10)+1) + 'workfile.jpg', 'wb')
+#                     f.write(imgPayload)
+#                     f.close
                     
-                    tmpPayloadResult = self.payloadResult[endHDR + 1:]
-        #             print "left with %d bytes in the buffer" % len(tmpPayloadResult)
+                    tmpPayloadResult = payloadResult[endHDR + 1:]
                     
                     payloadResult = tmpPayloadResult[:]
                     
@@ -72,6 +82,20 @@ class ImageStreamer(object):
                     pass
             else:
                 pass
+            
+    def retrieveImageSnapshot(self):
+        r = requests.get(self.snapshotURL, stream=False)
+        
+        if r.status_code == 200:
+            res = StringIO(r.content)
+#             res =  Image.open(StringIO(r.content))
+#             f = open('workfile.jpg', 'wb')
+#             f.write(r.content)
+#             f.close
+            return res
+        else:
+            raise Exception("NOK response from Camera ["+r.status_code+"]")
+            
                 
             
         
